@@ -68,3 +68,56 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+# Backgammon Game
+
+A 3D Backgammon game built with React Three Fiber.
+
+## Board Texture Setup
+
+The game requires a board texture image (`board.jpg`) in the `public` directory. The texture should be:
+
+1. Dimensions: 2048x1024 pixels (2:1 ratio)
+2. Layout:
+   - 12 triangles on each side (top and bottom)
+   - Alternating colors (traditionally brown/tan or black/white)
+   - Center bar dividing the board
+   - Outer border for the bearing off area
+
+You can create this texture in any image editing software, or use a standard backgammon board texture.
+
+### Quick Setup
+
+1. Download a backgammon board texture
+2. Save it as `board.jpg` in the `public` directory
+3. Make sure the texture is oriented correctly:
+   - Points 1-6 (light triangles) should be in the bottom right
+   - Points 7-12 (dark triangles) should be in the bottom left
+   - Points 13-18 (light triangles) should be in the top left
+   - Points 19-24 (dark triangles) should be in the top right
+
+## Game Features
+
+- 3D rendered board and pieces
+- Point numbers displayed on the board
+- Highlighted legal moves
+- Dice rolling
+- Move validation
+- Turn tracking
+
+## How to Play
+
+1. Click "Roll" to roll the dice
+2. Yellow highlights show which pieces you can move
+3. Click a highlighted piece to select it
+4. Green highlights show where the selected piece can move
+5. Click a green highlight to make your move
+6. Continue until you've used all dice
+7. Next player's turn begins
+
+## Development
+
+```bash
+npm install
+npm start
+```
