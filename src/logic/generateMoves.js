@@ -73,11 +73,15 @@ export default function generateMoves(board, player, dice) {
       .filter(p => p.n && p.colour === player && p.idx >= 1 && p.idx <= 24)
       .map(p => p.idx);
 
-    if (!pts.length) return;
+    if (!pts.length) {
+      if (path.length) moves.push(path);
+      return;
+    }
 
     const dir      = DIRECTION[player];
     const allHome  = pts.every(pt => inHome(player, pt));
     const seenFace = new Set();
+    let found      = false;
 
     for (let di = 0; di < diceLeft.length; di++) {
       const pip = diceLeft[di];
@@ -105,6 +109,7 @@ export default function generateMoves(board, player, dice) {
 
         if (to >= 1 && to <= 24 && !destOpen(state, player, to)) continue;
 
+        found = true;
         const next = clone(state);
         applyMove(next, player, from, to);
 
@@ -113,7 +118,24 @@ export default function generateMoves(board, player, dice) {
         rec(next, rem, [...path, { from, to, pip: usedPip }]); // ← no dieIdx
       }
     }
+
+    if (!found && path.length) moves.push(path);
   })(board, dice, []);
+
+  /* Backgammon rule: must use maximum number of dice possible.
+     When only one die can be used from a non-double roll, use the higher. */
+  if (moves.length) {
+    const maxLen = Math.max(...moves.map(s => s.length));
+    let best = moves.filter(s => s.length === maxLen);
+
+    if (maxLen === 1 && dice.length >= 2 && dice[0] !== dice[1]) {
+      const maxPip = Math.max(...best.map(s => s[0].pip));
+      const higher = best.filter(s => s[0].pip === maxPip);
+      if (higher.length) best = higher;
+    }
+
+    return best;
+  }
 
   return moves;
 }
