@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
+const { Game } = require('./game');
 
 const app = express();
 const port = 3001; // Different from both React (3000) and WildBG (8080)
@@ -12,6 +13,42 @@ app.use(cors({
   allowedHeaders: ['Content-Type'],
   credentials: true
 }));
+
+app.use(express.json());
+
+/* ======================== CLI GAME API ============================= */
+let game = new Game();
+
+app.post('/game/new', (req, res) => {
+  game = new Game();
+  res.json(game.getState());
+});
+
+app.get('/game', (req, res) => {
+  res.json(game.getState());
+});
+
+app.post('/game/roll', (req, res) => {
+  const result = game.roll();
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.post('/game/move', (req, res) => {
+  const { from, to, pip } = req.body || {};
+  if (from == null || to == null || pip == null) {
+    return res.status(400).json({ error: "Required: {from, to, pip}" });
+  }
+  const result = game.move(Number(from), Number(to), Number(pip));
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.post('/game/pass', (req, res) => {
+  const result = game.pass();
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
 
 // Test endpoint that checks WildBG connectivity
 app.get('/test', async (req, res) => {
