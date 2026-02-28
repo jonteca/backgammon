@@ -59,18 +59,28 @@ function reducer(state, action) {
       const idx      = diceLeft.indexOf(pip);
       if (idx !== -1) diceLeft.splice(idx, 1);
 
-      const who      = diceLeft.length ? state.player : nextPlayer(state.player);
-      const moves    = legalMoves(board, who, diceLeft);
-
       const win =
         board[BORNE_OFF.black]?.n === 15 ? "black" :
         board[BORNE_OFF.white]?.n === 15 ? "white" : null;
 
+      /* still have dice left – check if any legal moves remain */
+      if (diceLeft.length) {
+        const moves = legalMoves(board, state.player, diceLeft);
+        if (moves.length) {
+          return { ...state,
+            board, dice: diceLeft, activeMoves: moves,
+            selected: null, winner: win
+          };
+        }
+        /* no legal moves with remaining dice → end turn */
+      }
+
+      const who = nextPlayer(state.player);
       return { ...state,
         board,
-        dice       : diceLeft,
+        dice       : [],
         player     : who,
-        activeMoves: moves,
+        activeMoves: [],
         selected   : null,
         winner     : win,
         isAiThinking: state.aiPlayers.has(who)
@@ -91,6 +101,11 @@ function reducer(state, action) {
 
     case "CLEAR_ERROR":
       return { ...state, lastError: null };
+
+    case "TOGGLE_AI_TYPE":
+      return { ...state,
+        aiType: state.aiType === AI_TYPES.WILDBG ? AI_TYPES.LOCAL : AI_TYPES.WILDBG
+      };
 
     case "PASS_TURN":
       return { ...state,
@@ -148,6 +163,21 @@ export const GameProvider = ({ children }) => {
 
     return cleanup;
   }, [state.isAiThinking]);
+
+  /* auto-pass when a human rolls but has no legal moves --------- */
+  useEffect(() => {
+    if (
+      state.dice.length > 0 &&
+      state.activeMoves.length === 0 &&
+      !state.winner &&
+      !state.isAiThinking
+    ) {
+      const t = setTimeout(() => {
+        dispatch({ type: "PASS_TURN", nextPlayer: nextPlayer(state.player) });
+      }, MOVE_DELAY);
+      return () => clearTimeout(t);
+    }
+  }, [state.dice, state.activeMoves, state.winner, state.isAiThinking, state.player]);
 
   /* auto-roll whenever an idle AI has the dice ------------------ */
   useEffect(() => {

@@ -97,7 +97,7 @@ export default function generateMoves(board, player, dice) {
 
           if (pip === pointNo || pip > highest) {
             to      = BEAR_OFF[player];
-            usedPip = pointNo;                 // distance actually travelled
+            usedPip = pip;                     // must match the die face used
           } else {
             continue;
           }
