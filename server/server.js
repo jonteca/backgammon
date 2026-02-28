@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
 const { Game } = require('./game');
+const { getBestMove } = require('./ai');
 
 const app = express();
 const port = 3001; // Different from both React (3000) and WildBG (8080)
@@ -48,6 +49,52 @@ app.post('/game/pass', (req, res) => {
   const result = game.pass();
   if (result.error) return res.status(400).json(result);
   res.json(result);
+});
+
+app.post('/game/ai-move', async (req, res) => {
+  try {
+    const aiType = (req.body && req.body.type) || 'wildbg';
+
+    if (game.winner) return res.status(400).json({ error: "Game is over" });
+
+    // Roll if needed
+    if (game.turnPhase === 'roll') {
+      const rollResult = game.roll();
+      if (rollResult.error) return res.status(400).json(rollResult);
+    }
+
+    // No legal moves after rolling → pass and return
+    if (game.turnPhase === 'done') {
+      return res.json(game.pass());
+    }
+
+    // Get AI's best move sequence
+    let bestSeq = await getBestMove(game.board, game.dice, game.player, aiType);
+
+    // Fallback: if AI returned nothing but legal moves exist, use first sequence
+    if ((!bestSeq || !bestSeq.length) && game.activeMoves.length) {
+      bestSeq = game.activeMoves[0];
+    }
+
+    // Apply each move in the sequence
+    for (const m of bestSeq) {
+      if (game.turnPhase !== 'move') break;
+      const result = game.move(m.from, m.to, m.pip);
+      if (result.error) {
+        return res.status(500).json({ error: "AI move rejected", detail: result.error, move: m });
+      }
+    }
+
+    // Pass if turn ended with no legal moves remaining
+    if (game.turnPhase === 'done') {
+      game.pass();
+    }
+
+    res.json(game.getState());
+  } catch (err) {
+    console.error('AI move error:', err);
+    res.status(500).json({ error: 'AI move failed', details: err.message });
+  }
 });
 
 // Test endpoint that checks WildBG connectivity

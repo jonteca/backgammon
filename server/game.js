@@ -370,4 +370,4 @@ function renderBoard(board) {
 }
 
 /* ======================== EXPORTS ================================== */
-module.exports = { Game, renderBoard };
+module.exports = { Game, renderBoard, generateMoves, applyMove };
