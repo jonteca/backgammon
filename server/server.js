@@ -1,15 +1,15 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch');
-const { Game } = require('./game');
+const { Game, generateMoves } = require('./game');
 const { getBestMove } = require('./ai');
+const ffi = require('./wildbg-ffi');
 
 const app = express();
 const port = 3001; // Different from both React (3000) and WildBG (8080)
 
 // More detailed CORS configuration
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: ['http://localhost:3000', 'http://localhost:3002', 'http://127.0.0.1:3000', 'http://127.0.0.1:3002'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
   credentials: true
@@ -97,55 +97,45 @@ app.post('/game/ai-move', async (req, res) => {
   }
 });
 
-// Test endpoint that checks WildBG connectivity
-app.get('/test', async (req, res) => {
+// FFI-powered best-move endpoint (replaces old HTTP proxy to WildBG)
+app.post('/api/best-move', (req, res) => {
   try {
-    // Try to access the Swagger UI - we know this works
-    const response = await fetch('http://localhost:8080/swagger-ui');
-    if (response.ok) {
-      res.json({ 
-        status: 'ok',
-        message: 'Successfully connected to WildBG engine'
-      });
-    } else {
-      res.status(502).json({ 
-        status: 'error',
-        message: 'WildBG engine responded with status: ' + response.status
-      });
+    const { board, dice, player } = req.body;
+    if (!board || !dice || !player) {
+      return res.status(400).json({ error: 'Required: { board, dice, player }' });
     }
+    if (!ffi) {
+      return res.status(503).json({ error: 'WildBG FFI not available' });
+    }
+    const [d1, d2] = dice;
+    const ffiMoves = ffi.bestMove(board, d1, d2, player);
+
+    if (!ffiMoves.length) {
+      return res.json({ moves: [] });
+    }
+
+    // Match against legal moves to get correct pip values.
+    // FFI pip = distance, but bearing-off needs the actual die face
+    // (e.g., bearing off from point 3 with die 5: pip must be 5, not 3).
+    const fullDice = d1 === d2 ? [d1, d1, d1, d1] : [d1, d2];
+    const legal = generateMoves(board, player, fullDice);
+    const match = legal.find(seq =>
+      seq.length === ffiMoves.length &&
+      seq.every((m, i) => m.from === ffiMoves[i].from && m.to === ffiMoves[i].to)
+    );
+
+    res.json({ moves: match || ffiMoves });
   } catch (error) {
-    res.status(503).json({ 
-      status: 'error',
-      message: 'Could not connect to WildBG engine: ' + error.message
-    });
+    console.error('FFI best-move error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Proxy endpoint for WildBG
-app.get('/move', async (req, res) => {
-  try {
-    const wildBgUrl = 'http://localhost:8080/move' + req.url.substring(req.url.indexOf('?'));
-    console.log('Proxying request to:', wildBgUrl);
-    
-    const response = await fetch(wildBgUrl, {
-      timeout: 5000 // 5 second timeout
-    });
-    
-    if (!response.ok) {
-      console.error('WildBG error:', response.status, response.statusText);
-      throw new Error(`WildBG responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log('WildBG response:', data);
-    res.json(data);
-  } catch (error) {
-    console.error('Error proxying to WildBG:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to get move from WildBG',
-      details: error.message 
-    });
-  }
+app.get('/test', (req, res) => {
+  res.json({
+    status: ffi ? 'ok' : 'degraded',
+    message: ffi ? 'WildBG FFI loaded' : 'WildBG FFI not available, using local AI fallback',
+  });
 });
 
 // Error handling middleware
@@ -158,6 +148,6 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Proxy server running at http://localhost:${port}`);
-  console.log('Configured to proxy requests to WildBG at http://localhost:8080');
+  console.log(`Server running at http://localhost:${port}`);
+  console.log('WildBG FFI:', ffi ? 'loaded' : 'not available (local AI fallback)');
 }); 

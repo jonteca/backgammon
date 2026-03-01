@@ -131,7 +131,21 @@ function wildBestMove(board, diceFaces, player) {
   if (!ffi) throw new Error('WildBG FFI not available (libwildbg.dylib not loaded)');
 
   const [d1, d2] = diceFaces;
-  return ffi.bestMove(board, d1, d2, player);
+  const ffiMoves = ffi.bestMove(board, d1, d2, player);
+  if (!ffiMoves.length) return ffiMoves;
+
+  // Match FFI result against legal sequences to get correct pip values.
+  // The C API returns from/to but not which die face was consumed;
+  // generateMoves knows the exact pip (die face) for each move.
+  const dice  = d1 === d2 ? [d1, d1, d1, d1] : [d1, d2];
+  const legal = generateMoves(board, player, dice);
+
+  const match = legal.find(seq =>
+    seq.length === ffiMoves.length &&
+    seq.every((m, i) => m.from === ffiMoves[i].from && m.to === ffiMoves[i].to)
+  );
+
+  return match || ffiMoves;
 }
 
 /* ======================== GET BEST MOVE ============================ */

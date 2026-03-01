@@ -43,7 +43,7 @@ const Die = ({ value, rolling }) => {
         padding: 8,
         boxShadow: rolling ? '0 0 20px rgba(255,215,0,0.8)' : '0 3px 6px rgba(0,0,0,0.4)',
         transition: 'all 0.3s ease',
-        transform: `scale(${rolling ? 1.2 : 1})`,
+        transform: `scale(${rolling ? 1.05 : 1})`,
         position: 'relative',
         zIndex: rolling ? 1 : 0
       }}
@@ -92,14 +92,11 @@ export default function Dice({ values, rolling }) {
       ))}
       <style>{`
         @keyframes roll {
-          0% { transform: rotate(0deg) translate(0, 0) scale(1.2); }
-          15% { transform: rotate(180deg) translate(20px, -20px) scale(1.2); }
-          30% { transform: rotate(360deg) translate(0, 0) scale(1.2); }
-          45% { transform: rotate(540deg) translate(-20px, -20px) scale(1.2); }
-          60% { transform: rotate(720deg) translate(0, 0) scale(1.2); }
-          75% { transform: rotate(900deg) translate(20px, -10px) scale(1.2); }
-          90% { transform: rotate(1080deg) translate(0, 0) scale(1.2); }
-          100% { transform: rotate(1080deg) translate(0, 0) scale(1.2); }
+          0% { transform: rotate(0deg) scale(1.05); }
+          30% { transform: rotate(360deg) scale(1.05); }
+          60% { transform: rotate(720deg) scale(1.05); }
+          90% { transform: rotate(1080deg) scale(1.05); }
+          100% { transform: rotate(1080deg) scale(1.05); }
         }
         .die.rolling {
           animation: roll 1s cubic-bezier(0.45, 0.05, 0.55, 0.95);
