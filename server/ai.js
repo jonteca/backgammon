@@ -3,8 +3,8 @@
 /*  Combines evaluate, chooseBestMove, wildBestMove, getBestMove      */
 /* ------------------------------------------------------------------ */
 
-const fetch = require('node-fetch');
 const { generateMoves, applyMove } = require('./game');
+const ffi = require('./wildbg-ffi');
 
 /* ======================== CONSTANTS ================================ */
 const DIRECTION = { black: -1, white: 1 };
@@ -124,102 +124,14 @@ function chooseBestMove(board, player, myMoves) {
   return bestSeq;
 }
 
-/* ======================== WILDBG CLIENT ============================ */
-/* From src/ai/wildbg.js — HTTP wrapper for WildBG engine             */
+/* ======================== WILDBG FFI =============================== */
+/* Calls wildbg-c shared library directly via koffi FFI               */
 
-const BAR_X = 0;
-const BAR_O = 25;
-const OFF_X = 25;
-const OFF_O = 0;
-
-const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
-
-function boardToParams(board) {
-  const slot = (i) => board[i] ?? { n: 0 };
-
-  board.forEach((s, i) => {
-    assert(Number.isInteger(s.n) && s.n >= 0,
-      `Invalid board slot #${i}: ${JSON.stringify(s)}`);
-    if (s.n > 0)
-      assert(s.colour === "black" || s.colour === "white",
-        `Slot ${i} has checkers but colour is ${s.colour}`);
-  });
-
-  const signed = Array(26).fill(0);
-
-  for (let i = 1; i <= 24; i++) {
-    const p = slot(i);
-    if (p.n) signed[i] = p.colour === "black" ? p.n : -p.n;
-  }
-
-  signed[BAR_X] += slot(25).n;
-  signed[BAR_O] -= slot(0).n;
-  signed[OFF_X] += slot(26).n;
-  signed[OFF_O] -= slot(27).n;
-
-  const totalX = signed.reduce((s, v) => v > 0 ? s + v : s, 0);
-  const totalO = signed.reduce((s, v) => v < 0 ? s - v : s, 0);
-  assert(totalX === 15 && totalO === 15,
-    `Checker count mismatch (x ${totalX} / o ${totalO})`);
-
-  const qs = new URLSearchParams();
-  signed.forEach((v, i) => { if (v) qs.append(`p${i}`, v); });
-  return qs;
-}
-
-function translate({ from, to }) {
-  if (from === BAR_X) from = 25;
-  else if (from === BAR_O) from = 0;
-
-  if (to === BAR_X)       to = 25;
-  else if (to === BAR_O)  to = 0;
-  else if (to === OFF_X)  to = 26;
-  else if (to === OFF_O)  to = 27;
-
-  const pip =
-    to === 26 ? from :
-    to === 27 ? 25 - from :
-    Math.abs(from - to);
-
-  return { from, to, pip };
-}
-
-async function wildBestMove(
-  board, diceFaces, player,
-  endpoint = "http://localhost:8080/move",
-  ply = 1
-) {
-  assert(Array.isArray(diceFaces) && diceFaces.length >= 2,
-    `Dice array must have at least two faces: ${JSON.stringify(diceFaces)}`);
+function wildBestMove(board, diceFaces, player) {
+  if (!ffi) throw new Error('WildBG FFI not available (libwildbg.dylib not loaded)');
 
   const [d1, d2] = diceFaces;
-  [d1, d2].forEach(d =>
-    assert(Number.isInteger(d) && d >= 1 && d <= 6, `Die out of range: ${d}`));
-
-  const doubles = d1 === d2;
-
-  const url = new URL(endpoint);
-  url.searchParams.set("die1", d1);
-  url.searchParams.set("die2", doubles ? d1 : d2);
-  url.searchParams.set("ply", ply);
-  url.searchParams.set("player", player === "black" ? "x" : "o");
-  url.search += "&" + boardToParams(board).toString();
-
-  const r   = await fetch(url);
-  const txt = await r.text();
-  if (!r.ok) {
-    let msg = txt;
-    try { msg = JSON.parse(txt).error || txt; } catch { /* ignore */ }
-    throw new Error(`WildBG ${r.status}: ${msg}`);
-  }
-
-  let data;
-  try { data = JSON.parse(txt); }
-  catch { throw new Error("WildBG returned non-JSON: " + txt.slice(0, 200)); }
-
-  if (!data.moves?.length) return [];
-
-  return data.moves[0].play.map(m => translate(m));
+  return ffi.bestMove(board, d1, d2, player);
 }
 
 /* ======================== GET BEST MOVE ============================ */
@@ -245,8 +157,8 @@ async function getBestMove(board, dice, player, aiType = AI_TYPES.WILDBG) {
         const faces = firstTwoFaces(dice);
         const seq   = await wildBestMove(board, faces, player);
         return seq.map(ensurePip);
-      } catch (netErr) {
-        console.error("[WildBG] failed, falling back to local AI:", netErr.message);
+      } catch (ffiErr) {
+        console.error("[WildBG] failed, falling back to local AI:", ffiErr.message);
         aiType = AI_TYPES.LOCAL;
       }
     }

@@ -3,6 +3,11 @@
 # dependencies
 /node_modules
 /server/node_modules
+
+# native libraries (platform-specific)
+server/*.dylib
+server/*.so
+server/*.dll
 /.pnp
 .pnp.js
 
