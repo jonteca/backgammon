@@ -9,7 +9,7 @@ const ffi = require('./wildbg-ffi');
 const { getOrCreateRoom, getRoom, deleteRoom, getAllRooms } = require('./rooms');
 
 const app = express();
-const port = 3001; // Different from both React (3000) and WildBG (8080)
+const port = process.env.PORT || 3001;
 
 // CORS: allow local dev and Discord proxy origins
 app.use(cors({
