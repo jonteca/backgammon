@@ -7,8 +7,10 @@ export default function GameUI() {
   const {
     dice, player, winner, aiPlayers, isAiThinking, lastError,
     matchScore, matchLength, gameResult, matchWinner, cubeValue,
-    doubleOffered, crawford
+    doubleOffered, crawford, mode, myColour, playerCount
   } = state;
+
+  const online = mode === "online";
 
   const toggleAI = (player) => {
     const newAiPlayers = new Set(aiPlayers);
@@ -96,6 +98,20 @@ export default function GameUI() {
         </>
       ) : (
         <>
+          {/* Online: waiting for opponent */}
+          {online && playerCount < 2 && (
+            <span className="turn" style={{ color: "#ffd700", fontStyle: "italic" }}>
+              Waiting for opponent...
+            </span>
+          )}
+
+          {/* Online: your colour */}
+          {online && myColour && (
+            <span className="turn">
+              You are: {myColour}
+            </span>
+          )}
+
           {lastError && (
             <div className="error-message" style={{
               backgroundColor: "#fee",
@@ -110,19 +126,22 @@ export default function GameUI() {
             </div>
           )}
 
-          <button
-            onClick={() => dispatch({ type: "ROLL" })}
-            disabled={isAiThinking || lastError || dice.length > 0 || doubleOffered}
-          >
-            Roll Dice
-          </button>
+          {!online && (
+            <button
+              onClick={() => dispatch({ type: "ROLL" })}
+              disabled={isAiThinking || lastError || dice.length > 0 || doubleOffered}
+            >
+              Roll Dice
+            </button>
+          )}
 
           <span className="dice">
-            {isAiThinking ? "AI thinking..." : (dice.length ? dice.join(" , ") : "roll!")}
+            {isAiThinking ? "AI thinking..." : (dice.length ? dice.join(" , ") : online ? "" : "roll!")}
           </span>
 
           <span className="turn">
-            Turn: {player} {aiPlayers.has(player) ? "(AI)" : ""}
+            Turn: {player} {!online && aiPlayers.has(player) ? "(AI)" : ""}
+            {online && player === myColour ? " (you)" : ""}
             {crawford && " [Crawford]"}
           </span>
 
@@ -131,19 +150,24 @@ export default function GameUI() {
             {matchLength > 0 && ` / ${matchLength}`}
           </span>
 
-          <button onClick={() => toggleAI("black")}>
-            {aiPlayers.has("black") ? "Disable Black AI" : "Enable Black AI"}
-          </button>
+          {/* Local-only controls */}
+          {!online && (
+            <>
+              <button onClick={() => toggleAI("black")}>
+                {aiPlayers.has("black") ? "Disable Black AI" : "Enable Black AI"}
+              </button>
 
-          <button onClick={() => toggleAI("white")}>
-            {aiPlayers.has("white") ? "Disable White AI" : "Enable White AI"}
-          </button>
+              <button onClick={() => toggleAI("white")}>
+                {aiPlayers.has("white") ? "Disable White AI" : "Enable White AI"}
+              </button>
 
-          <button onClick={toggleAllAI}>
-            {aiPlayers.size === 2 ? "Disable All AI" : "Watch AI vs AI"}
-          </button>
+              <button onClick={toggleAllAI}>
+                {aiPlayers.size === 2 ? "Disable All AI" : "Watch AI vs AI"}
+              </button>
 
-          <button onClick={startNewGame}>New Game</button>
+              <button onClick={startNewGame}>New Game</button>
+            </>
+          )}
         </>
       )}
     </div>

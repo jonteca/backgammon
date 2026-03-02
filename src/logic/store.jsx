@@ -65,7 +65,13 @@ const initState = {
   gameResult  : null,           // { winner, type, points }
   matchWinner : null,
   crawford    : false,          // is this the Crawford game?
-  crawfordUsed: false           // has the Crawford game been played?
+  crawfordUsed: false,          // has the Crawford game been played?
+
+  /* online multiplayer */
+  mode        : "local",        // "local" | "online"
+  myColour    : null,           // which colour this client controls
+  onlinePlayers: {},            // { black: userId, white: userId }
+  playerCount : 0,
 };
 
 /* ---------- compute Crawford for next game ---------------------- */
@@ -231,6 +237,35 @@ function reducer(state, action) {
       };
     }
 
+    /* ---------- online multiplayer --------------------------------- */
+    case "SET_ONLINE":
+      return { ...state,
+        mode: "online",
+        myColour: action.colour,
+        aiPlayers: new Set(),   // disable AI toggles in online mode
+      };
+
+    case "SYNC_STATE": {
+      // Server-authoritative state replaces board/dice/player
+      const s = action.serverState;
+      const moves = legalMoves(s.board, s.player, s.dice || []);
+      return { ...state,
+        board          : s.board,
+        player         : s.player,
+        dice           : s.dice || [],
+        winner         : s.winner,
+        activeMoves    : moves,
+        selected       : null,
+        isAiThinking   : false,
+        onlinePlayers  : s.players || {},
+        playerCount    : s.playerCount || 0,
+        cubeValue      : s.cubeValue ?? state.cubeValue,
+        cubeOwner      : s.cubeOwner !== undefined ? s.cubeOwner : state.cubeOwner,
+        doubleOffered  : s.doubleOffered ?? state.doubleOffered,
+        doublingPlayer : s.doublingPlayer !== undefined ? s.doublingPlayer : state.doublingPlayer,
+      };
+    }
+
     default:
       return state;
   }
@@ -246,6 +281,7 @@ export const GameProvider = ({ children }) => {
 
   /* AI think loop ------------------------------------------------ */
   useEffect(() => {
+    if (state.mode === "online") return;
     if (!state.isAiThinking || !state.aiTurnId) return;
     let cancelled = false;
     let timerIds = [];
@@ -293,6 +329,7 @@ export const GameProvider = ({ children }) => {
 
   /* auto-pass when a human rolls but has no legal moves --------- */
   useEffect(() => {
+    if (state.mode === "online") return;
     if (
       state.dice.length > 0 &&
       state.activeMoves.length === 0 &&
@@ -317,6 +354,7 @@ export const GameProvider = ({ children }) => {
 
   /* auto-roll (or double) whenever an idle AI has the dice ------- */
   useEffect(() => {
+    if (state.mode === "online") return;
     if (
       state.aiPlayers.has(state.player) &&
       state.dice.length === 0 &&
@@ -351,6 +389,7 @@ export const GameProvider = ({ children }) => {
 
   /* AI responds to doubles (accept or decline based on pip count) */
   useEffect(() => {
+    if (state.mode === "online") return;
     if (
       state.doubleOffered &&
       state.aiPlayers.has(nextPlayer(state.doublingPlayer))

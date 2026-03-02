@@ -2,7 +2,7 @@
 /*  ai/wildbg.js – calls server-side WildBG FFI endpoint               */
 /* ------------------------------------------------------------------ */
 
-const ENDPOINT = "http://localhost:3001/api/best-move";
+const ENDPOINT = "/api/best-move";
 
 export async function wildBestMove(board, diceFaces, player) {
   const [d1, d2] = diceFaces;

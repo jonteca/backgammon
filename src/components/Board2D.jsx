@@ -2,9 +2,10 @@
 /*  Board2D.jsx – bar centred, single off‑strip, correct bear‑off      */
 /* ------------------------------------------------------------------ */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { useGame } from "../logic/store";
 import { AI_TYPES } from "../ai/aiManager";
+import { wsSend } from "../hooks/multiplayerSend";
 import Dice from "./Dice";
 
 /* geometry & palette ------------------------------------------------ */
@@ -238,19 +239,26 @@ export default function Board2D() {
   const {
     board, selected, activeMoves, player, dice, aiTypes, isAiThinking, winner,
     aiPlayers, cubeValue, cubeOwner, doubleOffered, doublingPlayer,
-    matchLength, matchScore, gameResult, matchWinner, crawford
+    matchLength, matchScore, gameResult, matchWinner, crawford,
+    mode, myColour
   } = state;
+  const online = mode === "online";
+  const isMyTurn = !online || player === myColour;
 
   const [rolling, setRolling] = useState(false);
   const rollDice = () => {
-    setRolling(true);
-    setTimeout(() => {
-      dispatch({ type: "ROLL" });
-      setRolling(false);
-    }, 600);
+    if (online) {
+      wsSend({ type: 'roll' });
+    } else {
+      setRolling(true);
+      setTimeout(() => {
+        dispatch({ type: "ROLL" });
+        setRolling(false);
+      }, 600);
+    }
   };
 
-  const isHuman = !aiPlayers.has(player);
+  const isHuman = online ? isMyTurn : !aiPlayers.has(player);
   const canDouble = isHuman &&
     dice.length === 0 &&
     !winner &&
@@ -258,8 +266,11 @@ export default function Board2D() {
     !isAiThinking &&
     !crawford &&
     (cubeOwner === null || cubeOwner === player);
-  const respondingToDouble = doubleOffered && isHuman &&
-    player !== doublingPlayer;
+  const respondingToDouble = doubleOffered && (
+    online
+      ? myColour !== doublingPlayer   // online: I'm the opponent being doubled
+      : isHuman && player !== doublingPlayer
+  );
 
   /* highlight sets */
   const { movable, dest } = useMemo(() => {
@@ -272,7 +283,17 @@ export default function Board2D() {
     return { movable: m, dest: d };
   }, [activeMoves, selected]);
 
+  const doMove = (mv) => {
+    if (online) {
+      wsSend({ type: 'move', from: mv.from, to: mv.to, pip: mv.pip });
+    } else {
+      dispatch({ type: "MOVE", ...mv });
+    }
+  };
+
   const handle = (idx, pt) => {
+    if (online && !isMyTurn) return; // can't interact when not your turn
+
     const bar = player === "black" ? 25 : 0;
 
     if (board[bar].n && board[bar].colour === player) {
@@ -280,7 +301,7 @@ export default function Board2D() {
         dispatch({ type: "SELECT", point: selected === idx ? null : idx });
       else if (dest.has(idx)) {
         const mv = activeMoves.find(s => s[0].from === selected && s[0].to === idx);
-        if (mv) dispatch({ type: "MOVE", ...mv[0] });
+        if (mv) doMove(mv[0]);
       }
       return;
     }
@@ -289,7 +310,7 @@ export default function Board2D() {
       dispatch({ type: "SELECT", point: selected === idx ? null : idx });
     } else if (dest.has(idx)) {
       const mv = activeMoves.find(s => s[0].from === selected && s[0].to === idx);
-      if (mv) dispatch({ type: "MOVE", ...mv[0] });
+      if (mv) doMove(mv[0]);
     }
   };
 
@@ -323,12 +344,40 @@ export default function Board2D() {
   const botL = [1,2,3,4,5,6];
   const botR = [7,8,9,10,11,12];
 
-  const rollDisabled = (dice.length && activeMoves.length) || winner || doubleOffered;
+  const rollDisabled = (dice.length && activeMoves.length) || winner || doubleOffered
+    || (online && !isMyTurn);
 
   const MATCH_OPTIONS = [0, 3, 5, 7, 11];
 
+  /* Responsive scaling: shrink to fit Discord's resizable panel */
+  const containerRef = useRef(null);
+  const innerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  const recalcScale = useCallback(() => {
+    const container = containerRef.current;
+    const inner = innerRef.current;
+    if (!container || !inner) return;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = inner.scrollWidth;
+    const ih = inner.scrollHeight;
+    const s = Math.min(1, cw / iw, ch / ih);
+    setScale(s);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(recalcScale);
+    ro.observe(el);
+    recalcScale();
+    return () => ro.disconnect();
+  }, [recalcScale]);
+
   return (
     <div
+      ref={containerRef}
       style={{
         minHeight: "100vh",
         background: "#2c1810",
@@ -336,8 +385,19 @@ export default function Board2D() {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        overflow: "hidden",
+      }}
+    >
+    <div
+      ref={innerRef}
+      style={{
+        transform: scale < 1 ? `scale(${scale})` : undefined,
+        transformOrigin: "top center",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         gap: 14,
-        padding: 20
+        padding: 20,
       }}
     >
       {/* header ---------------------------------------------------- */}
@@ -441,7 +501,7 @@ export default function Board2D() {
           {/* double button */}
           {canDouble && (
             <button
-              onClick={() => dispatch({ type: "OFFER_DOUBLE" })}
+              onClick={() => online ? wsSend({ type: 'offer_double' }) : dispatch({ type: "OFFER_DOUBLE" })}
               style={btnStyle("linear-gradient(#e6a832,#c88c20 60%,#a67018)", false)}
             >
               Double
@@ -455,13 +515,13 @@ export default function Board2D() {
                 Double to {cubeValue * 2}?
               </span>
               <button
-                onClick={() => dispatch({ type: "ACCEPT_DOUBLE" })}
+                onClick={() => online ? wsSend({ type: 'accept_double' }) : dispatch({ type: "ACCEPT_DOUBLE" })}
                 style={btnStyle("linear-gradient(#66c06f,#4CAF50 60%,#3b8f3d)", false)}
               >
                 Accept
               </button>
               <button
-                onClick={() => dispatch({ type: "DECLINE_DOUBLE" })}
+                onClick={() => online ? wsSend({ type: 'decline_double' }) : dispatch({ type: "DECLINE_DOUBLE" })}
                 style={btnStyle("linear-gradient(#e05555,#c03030 60%,#992020)", false)}
               >
                 Decline
@@ -636,7 +696,7 @@ export default function Board2D() {
                   {matchWinner.toUpperCase()} wins the match!
                 </div>
                 <button
-                  onClick={() => dispatch({ type: "NEW_GAME" })}
+                  onClick={() => online ? wsSend({ type: 'new_game' }) : dispatch({ type: "NEW_GAME" })}
                   style={{
                     padding: "12px 28px", fontSize: 16, fontWeight: 700,
                     background: "linear-gradient(#4a90e2,#357abd 50%,#2f6fab)",
@@ -648,7 +708,7 @@ export default function Board2D() {
               </>
             ) : (
               <button
-                onClick={() => dispatch({ type: "NEXT_GAME" })}
+                onClick={() => online ? wsSend({ type: 'new_game' }) : dispatch({ type: "NEXT_GAME" })}
                 style={{
                   padding: "12px 28px", fontSize: 16, fontWeight: 700,
                   background: "linear-gradient(#66c06f,#4CAF50 60%,#3b8f3d)",
@@ -668,6 +728,7 @@ export default function Board2D() {
         @keyframes thinking{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
         .thinking-dots::after{content:'';animation:thinking 1.4s steps(4,end) infinite}
       `}</style>
+    </div>
     </div>
   );
 }
