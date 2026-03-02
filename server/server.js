@@ -194,7 +194,7 @@ app.get('/test', (req, res) => {
 const path = require('path');
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '..', 'dist');
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, { extensions: ['html'] }));
   // SPA fallback — serve index.html for non-API routes
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/game') || req.path === '/test') {
