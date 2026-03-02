@@ -14,15 +14,53 @@ const HOME      = { black: [6, 1], white: [19, 24] };
 const clone = (obj) => JSON.parse(JSON.stringify(obj));
 
 /* ======================== EVALUATE ================================= */
-/* From src/ai/ai.js — board evaluation heuristic                     */
+/* Position-weighted made-point values (from player's perspective).    */
+/* Index = point number from player's view (1=ace..24=deep back).     */
+/* Based on pubeval contact weights (Tesauro 1992), rescaled.         */
+const MADE_PT = [
+  0,   //  0 unused
+  4,   //  1 ace point — decent but traps checkers
+  5,   //  2
+  7,   //  3
+  9,   //  4 inner board — very good
+  10,  //  5 golden point — best
+  9,   //  6 bar point — very good
+  7,   //  7
+  6,   //  8
+  6,   //  9
+  5,   // 10
+  5,   // 11
+  5,   // 12
+  4,   // 13
+  3,   // 14
+  3,   // 15
+  2,   // 16
+  2,   // 17
+  2,   // 18
+  1,   // 19
+  1,   // 20 deep anchor territory
+  0,   // 21
+  -1,  // 22
+  -2,  // 23
+  -3   // 24 deepest back — trapped, negative value
+];
+
+/* Map board index to player-relative point number (1-24) */
+function playerPt(player, idx) {
+  return player === "black" ? idx : 25 - idx;
+}
+
 function evaluate(board, player) {
   const bar    = player === "black" ? 25 : 0;
   const off    = player === "black" ? 26 : 27;
   const opBar  = player === "black" ? 0  : 25;
   const opOff  = player === "black" ? 27 : 26;
   const dir    = DIRECTION[player];
-  const home   = HOME[player];
-  const opHome = HOME[player === "black" ? "white" : "black"];
+  const opp    = player === "black" ? "white" : "black";
+  const homeMin = Math.min(HOME[player][0], HOME[player][1]);
+  const homeMax = Math.max(HOME[player][0], HOME[player][1]);
+  const opHomeMin = Math.min(HOME[opp][0], HOME[opp][1]);
+  const opHomeMax = Math.max(HOME[opp][0], HOME[opp][1]);
 
   let s = 0;
 
@@ -48,15 +86,15 @@ function evaluate(board, player) {
 
     if (pt.colour === player) {
       if (pt.n >= 2) {
-        s += 5;
+        s += MADE_PT[playerPt(player, i)];
         const nxt = i + dir;
         if (nxt >= 1 && nxt <= 24 && board[nxt].colour === player && board[nxt].n >= 2)
           s += 3;
       }
-      if (i >= home[0] && i <= home[1]) s += 2;
+      if (i >= homeMin && i <= homeMax) s += 2;
     } else {
       if (pt.n === 1) s += 3;
-      if (pt.n >= 2 && i >= opHome[0] && i <= opHome[1]) s -= 2;
+      if (pt.n >= 2 && i >= opHomeMin && i <= opHomeMax) s -= 2;
     }
   }
   return s;
@@ -80,18 +118,27 @@ const rolls = [
   [5,6,2]
 ];
 
-function chooseBestMove(board, player, myMoves) {
+function chooseBestMove(board, player, myMoves, opts = {}) {
   if (!myMoves.length) return null;
 
-  const MAX_BRANCHES = 120;
-  if (myMoves.length > MAX_BRANCHES) {
+  const {
+    maxBranches  = 120,
+    noise        = 0,
+    greedyOnly   = false
+  } = opts;
+
+  const greedy = () => {
     let best = myMoves[0], bestScore = -Infinity;
     for (const seq of myMoves) {
-      const sc = evaluate(afterSeq(board, player, seq), player);
+      let sc = evaluate(afterSeq(board, player, seq), player);
+      if (noise > 0) sc += sc * noise * (Math.random() * 2 - 1);
       if (sc > bestScore) { bestScore = sc; best = seq; }
     }
     return best;
-  }
+  };
+
+  if (greedyOnly) return greedy();
+  if (myMoves.length > maxBranches) return greedy();
 
   const opp = player === "black" ? "white" : "black";
   let bestSeq = myMoves[0];
@@ -151,7 +198,18 @@ function wildBestMove(board, diceFaces, player) {
 /* ======================== GET BEST MOVE ============================ */
 /* From src/ai/aiManager.js — routes to WildBG or local AI            */
 
-const AI_TYPES = { WILDBG: "wildbg", LOCAL: "local" };
+const AI_TYPES = {
+  WILDBG      : "wildbg",
+  LOCAL_EASY  : "local-easy",
+  LOCAL_MEDIUM: "local-medium",
+  LOCAL_HARD  : "local-hard"
+};
+
+const LOCAL_OPTS = {
+  [AI_TYPES.LOCAL_EASY]  : { greedyOnly: true,  noise: 0.3 },
+  [AI_TYPES.LOCAL_MEDIUM]: { maxBranches: 60 },
+  [AI_TYPES.LOCAL_HARD]  : { maxBranches: 120 }
+};
 
 function firstTwoFaces(dice) {
   if (!dice?.length) throw new Error("No dice provided");
@@ -173,17 +231,18 @@ async function getBestMove(board, dice, player, aiType = AI_TYPES.WILDBG) {
         return seq.map(ensurePip);
       } catch (ffiErr) {
         console.error("[WildBG] failed, falling back to local AI:", ffiErr.message);
-        aiType = AI_TYPES.LOCAL;
+        aiType = AI_TYPES.LOCAL_HARD;
       }
     }
 
-    if (aiType === AI_TYPES.LOCAL) {
+    const localOpts = LOCAL_OPTS[aiType];
+    if (localOpts) {
       const allMoves = generateMoves(board, player, dice);
       if (!allMoves?.length) {
         console.log("[LOCAL AI] no legal moves for", player);
         return [];
       }
-      const bestSeq = chooseBestMove(board, player, allMoves) || [];
+      const bestSeq = chooseBestMove(board, player, allMoves, localOpts) || [];
       return bestSeq.map(ensurePip);
     }
 

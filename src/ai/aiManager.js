@@ -8,8 +8,16 @@ import generateMoves      from "../logic/generateMoves";
 
 /* ---------- public enum ------------------------------------------ */
 export const AI_TYPES = {
-  WILDBG: "wildbg",
-  LOCAL : "local"
+  WILDBG      : "wildbg",
+  LOCAL_EASY  : "local-easy",
+  LOCAL_MEDIUM: "local-medium",
+  LOCAL_HARD  : "local-hard"
+};
+
+const LOCAL_OPTS = {
+  [AI_TYPES.LOCAL_EASY]  : { greedyOnly: true,  noise: 0.3 },
+  [AI_TYPES.LOCAL_MEDIUM]: { maxBranches: 60 },
+  [AI_TYPES.LOCAL_HARD]  : { maxBranches: 120 }
 };
 
 /* ---------- helpers ---------------------------------------------- */
@@ -43,18 +51,19 @@ export async function getBestMove(
         return seq.map(ensurePip);                       // already normalised
       } catch (netErr) {
         console.error("[WildBG] failed, falling back to local AI:", netErr);
-        aiType = AI_TYPES.LOCAL;                         // graceful fallback
+        aiType = AI_TYPES.LOCAL_HARD;                    // graceful fallback
       }
     }
 
-    /* ---------- 2. Local expectiminimax ------------------------- */
-    if (aiType === AI_TYPES.LOCAL) {
+    /* ---------- 2. Local AI (easy / medium / hard) --------------- */
+    const localOpts = LOCAL_OPTS[aiType];
+    if (localOpts) {
       const allMoves = generateMoves(board, player, dice);
       if (!allMoves?.length) {
         console.log("[LOCAL AI] no legal moves for", player);
         return [];
       }
-      const bestSeq = chooseBestMove(board, player, allMoves) || [];
+      const bestSeq = chooseBestMove(board, player, allMoves, localOpts) || [];
       return bestSeq.map(ensurePip);
     }
 

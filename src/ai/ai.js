@@ -4,6 +4,41 @@
 import generateMoves, { applyMove } from "../logic/generateMoves";
 import { DIRECTION, HOME }          from "../logic/constants";
 
+/* ---------- position-weighted made-point values --------------------- */
+/* Index = point number from player's view (1=ace..24=deep back).      */
+/* Based on pubeval contact weights (Tesauro 1992), rescaled.          */
+const MADE_PT = [
+  0,   //  0 unused
+  4,   //  1 ace point
+  5,   //  2
+  7,   //  3
+  9,   //  4 inner board
+  10,  //  5 golden point — best
+  9,   //  6 bar point
+  7,   //  7
+  6,   //  8
+  6,   //  9
+  5,   // 10
+  5,   // 11
+  5,   // 12
+  4,   // 13
+  3,   // 14
+  3,   // 15
+  2,   // 16
+  2,   // 17
+  2,   // 18
+  1,   // 19
+  1,   // 20
+  0,   // 21
+  -1,  // 22
+  -2,  // 23
+  -3   // 24 deepest back
+];
+
+function playerPt(player, idx) {
+  return player === "black" ? idx : 25 - idx;
+}
+
 /* ---------- evaluation ------------------------------------------- */
 function evaluate(board, player) {
   const bar   = player === "black" ? 25 : 0;
@@ -11,8 +46,11 @@ function evaluate(board, player) {
   const opBar = player === "black" ? 0  : 25;
   const opOff = player === "black" ? 27 : 26;
   const dir   = DIRECTION[player];
-  const home  = HOME[player];
-  const opHome= HOME[player === "black" ? "white" : "black"];
+  const opp   = player === "black" ? "white" : "black";
+  const homeMin  = Math.min(HOME[player][0], HOME[player][1]);
+  const homeMax  = Math.max(HOME[player][0], HOME[player][1]);
+  const opHomeMin = Math.min(HOME[opp][0], HOME[opp][1]);
+  const opHomeMax = Math.max(HOME[opp][0], HOME[opp][1]);
 
   let s = 0;
 
@@ -41,15 +79,15 @@ function evaluate(board, player) {
 
     if (pt.colour === player) {
       if (pt.n >= 2) {
-        s += 5;
+        s += MADE_PT[playerPt(player, i)];
         const nxt = i + dir;
         if (nxt >= 1 && nxt <= 24 && board[nxt].colour === player && board[nxt].n >= 2)
           s += 3;
       }
-      if (i >= home[0] && i <= home[1]) s += 2;
+      if (i >= homeMin && i <= homeMax) s += 2;
     } else {
       if (pt.n === 1) s += 3;
-      if (pt.n >= 2 && i >= opHome[0] && i <= opHome[1]) s -= 2;
+      if (pt.n >= 2 && i >= opHomeMin && i <= opHomeMax) s -= 2;
     }
   }
   return s;
@@ -72,19 +110,28 @@ const rolls = [
 ];
 
 /* ---------- chooser ---------------------------------------------- */
-export function chooseBestMove(board, player, myMoves) {
+export function chooseBestMove(board, player, myMoves, opts = {}) {
   if (!myMoves.length) return null;
 
-  /* ===== branch guard – keeps doubles fast ====================== */
-  const MAX_BRANCHES = 120;
-  if (myMoves.length > MAX_BRANCHES) {
+  const {
+    maxBranches  = 120,
+    noise        = 0,
+    greedyOnly   = false
+  } = opts;
+
+  /* ===== greedy path (used as fallback or for Easy level) ======= */
+  const greedy = () => {
     let best = myMoves[0], bestScore = -Infinity;
     for (const seq of myMoves) {
-      const sc = evaluate(afterSeq(board, player, seq), player);
+      let sc = evaluate(afterSeq(board, player, seq), player);
+      if (noise > 0) sc += sc * noise * (Math.random() * 2 - 1);
       if (sc > bestScore) { bestScore = sc; best = seq; }
     }
     return best;
-  }
+  };
+
+  if (greedyOnly) return greedy();
+  if (myMoves.length > maxBranches) return greedy();
   /* =============================================================== */
 
   const opp = player === "black" ? "white" : "black";
