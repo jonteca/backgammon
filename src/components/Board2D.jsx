@@ -245,6 +245,23 @@ export default function Board2D() {
   const online = mode === "online";
   const isMyTurn = !online || player === myColour;
 
+  const [wildbgAvailable, setWildbgAvailable] = useState(null);
+  useEffect(() => {
+    fetch("/test").then(r => r.json())
+      .then(d => {
+        const ok = d.status === "ok";
+        setWildbgAvailable(ok);
+        if (!ok) {
+          ["black", "white"].forEach(p => {
+            if (aiTypes[p] === AI_TYPES.WILDBG) {
+              dispatch({ type: "SET_AI_TYPE", player: p, aiType: AI_TYPES.LOCAL_HARD });
+            }
+          });
+        }
+      })
+      .catch(() => setWildbgAvailable(false));
+  }, []);
+
   const [rolling, setRolling] = useState(false);
   const rollDice = () => {
     if (online) {
@@ -460,9 +477,11 @@ export default function Board2D() {
                   cursor: "pointer"
                 }}
               >
-                {Object.values(AI_TYPES).map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
+                {Object.values(AI_TYPES)
+                  .filter(t => t !== AI_TYPES.WILDBG || wildbgAvailable)
+                  .map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
               </select>
             </span>
           ))}
